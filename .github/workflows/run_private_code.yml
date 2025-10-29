@@ -35,9 +35,9 @@ jobs:
       IMG_RATE_SEC: "5"
       IMG_TIMEOUT_SEC: "60"
       # Thời lượng mục tiêu truyện 
-      TARGET_AUDIO_SEC: "3600"
-      INIT_TARGET_CHARS: "15000"
-      INIT_TARGET_SEC_HINT: "600"
+      TARGET_AUDIO_SEC: "300"
+      INIT_TARGET_CHARS: "3000"
+      INIT_TARGET_SEC_HINT: "300"
       # ép fallback ngay từ đầu
       HF_HUB_DISABLE_XET: "1"
       HF_DL_WORKERS: "4"   # khớp với code trên
