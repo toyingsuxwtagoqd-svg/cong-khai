@@ -1,12 +1,14 @@
-name: Run Private Uploader (YouTube)
+name: Run Private Code (YouTube)
 
 on:
   workflow_dispatch: {}
-  # schedule:
-  #   - cron: "30 16 * * *"   # (tuỳ chọn) 23:30 Asia/Bangkok
 
 permissions:
   contents: read
+
+concurrency:
+  group: run-private-code
+  cancel-in-progress: false
 
 jobs:
   run:
@@ -14,29 +16,17 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      # Clone repo RIÊNG TƯ bằng token (ẩn URL/token trong log)
-      - name: Clone private repo (stealth via GIT_ASKPASS)
-        shell: bash
-        env:
-          GHTOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          PRIVATE_REPO_URL: ${{ secrets.PRIVATE_REPO_URL }}
-        run: |
-          set -Eeuo pipefail
-          test -n "${PRIVATE_REPO_URL}" || (echo "::error::Missing secret PRIVATE_REPO_URL"; exit 1)
-          cat > .askpass.sh << 'EOF'
-#!/usr/bin/env bash
-case "$1" in
-  *Username*) echo "x-access-token" ;;
-  *Password*) echo "${GHTOKEN}" ;;
-  *) echo "${GHTOKEN}" ;;
-esac
-EOF
-          chmod +x .askpass.sh
-          GIT_ASKPASS="$PWD/.askpass.sh" git clone --depth=1 --filter=blob:none "${PRIVATE_REPO_URL}" private-src
-          rm -f .askpass.sh
-          unset GHTOKEN
+      - name: Checkout private repo (token, read-only)
+        uses: actions/checkout@v4
+        with:
+          # Lưu "owner/private-repo" vào Secret: PRIVATE_REPO_REPOSITORY
+          repository: ${{ secrets.PRIVATE_REPO_REPOSITORY }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: main
+          path: private-src
+          fetch-depth: 1
+          persist-credentials: false
 
-      # Python & system deps (ffmpeg + fonts cho phụ đề)
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -47,7 +37,6 @@ EOF
           sudo apt-get update
           sudo apt-get install -y ffmpeg libsndfile1 fonts-dejavu-core
 
-      # Python deps cần cho main.py của bạn (XTTS, HF, Google, v.v.)
       - name: Install Python deps
         working-directory: private-src
         run: |
@@ -56,36 +45,19 @@ EOF
           pip install "TTS==0.22.0" "transformers==4.44.2" "huggingface_hub<0.34" pillow soundfile numpy requests tqdm underthesea vinorm google-genai
           pip install "google-api-python-client" "google-auth" "google-auth-oauthlib"
 
-      # Bố trí input theo layout src/ nếu cần (không bắt buộc, nhưng an toàn)
-      - name: Prepare inputs (optional copies)
-        working-directory: private-src
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          if [ -d "assets/ref" ] && [ ! -d "src/assets/ref" ]; then
-            mkdir -p src/assets
-            cp -r assets/ref src/assets/ref
-          fi
-          if [ -f "tieude.csv" ] && [ ! -f "src/tieude.csv" ]; then
-            cp tieude.csv src/tieude.csv
-          fi
-
-      # Chạy code riêng tư → code sẽ tự upload YouTube nếu secrets hợp lệ
-      - name: Run main.py (YouTube upload inside)
+      - name: Run main.py (uploads to YouTube inside)
         working-directory: private-src
         env:
-          # YouTube/Gemini secrets
-          GEMINI_API_KEY:   ${{ secrets.GEMINI_API_KEY }}
-          YT_CLIENT_ID:     ${{ secrets.YT_CLIENT_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
-          YOUTUBE_PRIVACY:  public
 
-          # XTTS/model & tham số (khớp default trong code của bạn)
           MODEL_REPO: capleaf/viXTTS
           MODEL_DIR: ./.hf_models/vn_model
           REF_WAV: assets/ref_vi.wav
           COQUI_TOS_AGREED: "1"
+
           TOP_K: "1"
           TOP_P: "0.30"
           R_PEN: "12.0"
@@ -93,11 +65,11 @@ EOF
           CHUNK_MAX_CHARS: "200"
           SENTENCE_PAUSE_MS: "0"
 
-          # Ảnh/video
           IMG_W: "1280"
           IMG_H: "720"
           SEED: "42"
 
+          YOUTUBE_PRIVACY: public
           PYTHONUNBUFFERED: "1"
         run: |
           set -Eeuo pipefail
@@ -107,7 +79,6 @@ EOF
             python main.py
           fi
 
-      # Xoá sạch source riêng tư sau khi chạy (không lộ code)
       - name: Clean private sources
         if: always()
         run: rm -rf private-src
