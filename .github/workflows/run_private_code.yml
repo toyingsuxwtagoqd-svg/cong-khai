@@ -218,7 +218,7 @@ jobs:
           echo "== 20 files in commit =="
           git ls-tree -r --name-only HEAD | head -n 20
 
-      # Tự tìm thư mục chứa scripts/generate_thumbnails.py (kể cả khi không nhập workdir)
+      # Tự tìm thư mục chứa src/main.py (kể cả khi không nhập workdir)
       - name: Detect script path
         id: find_script
         run: |
@@ -226,14 +226,14 @@ jobs:
           BASE="private-src"
           DEFAULT="${{ steps.params.outputs.workdir }}"
           CAND=""
-          if [ -n "$DEFAULT" ] && [ -f "$BASE/$DEFAULT/scripts/generate_thumbnails.py" ]; then
+          if [ -n "$DEFAULT" ] && [ -f "$BASE/$DEFAULT/src/main.py" ]; then
             CAND="$BASE/$DEFAULT"
           else
-            CAND=$(cd "$BASE" && find . -type f -path "*/scripts/generate_thumbnails.py" -print -quit | sed 's|^\./||' | xargs -I{} dirname {} )
+            CAND=$(cd "$BASE" && find . -type f -path "*/src/main.py" -print -quit | sed 's|^\./||' | xargs -I{} dirname {} )
             [ -n "$CAND" ] && CAND="$BASE/$CAND"
           fi
           if [ -z "$CAND" ]; then
-            echo "::error::Không tìm thấy scripts/generate_thumbnails.py trong repo private."
+            echo "::error::Không tìm thấy src/main.py trong repo private."
             exit 1
           fi
           echo "dir=$CAND" >> "$GITHUB_OUTPUT"
