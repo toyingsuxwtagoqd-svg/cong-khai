@@ -15,17 +15,143 @@ jobs:
       cancel-in-progress: false
 
     env:
-      # Secrets YouTube (đặt ở repo CÔNG KHAI)
-      YT_CLIENT_ID:     ${{ secrets.YT_CLIENT_ID }}
-      YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
-      YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
-      
+      # ==== Tuỳ chỉnh nhanh (nếu muốn) ====
+      # XTTS model và cache
+      MODEL_REPO: capleaf/viXTTS
+      MODEL_DIR: ./.hf_models/vn_model
+      REF_WAV: assets/ref_vi.wav               # chỉ fallback; ưu tiên assets/ref/*.wav
+      COQUI_TOS_AGREED: "1"
+      # XTTS hyperparams
+      TOP_K: "1"
+      TOP_P: "0.30"
+      R_PEN: "12.0"
+      L_PEN: "1.05"
+      CHUNK_MAX_CHARS: "200"
+      SENTENCE_PAUSE_MS: "0"
+      # Pollinations
+      IMG_W: "1280"
+      IMG_H: "720"
+      POLL_IMG_MODEL: "flux"
+      IMG_RATE_SEC: "5"
+      IMG_TIMEOUT_SEC: "60"
+      # Thời lượng mục tiêu truyện 
+      TARGET_AUDIO_SEC: "3600"
+      INIT_TARGET_CHARS: "15000"
+      INIT_TARGET_SEC_HINT: "600"
+      # ép fallback ngay từ đầu
+      HF_HUB_DISABLE_XET: "1"
+      HF_DL_WORKERS: "4"   # khớp với code trên
+      # YouTube upload
+      YT_CLIENT_ID:      ${{ secrets.YT_CLIENT_ID }}
+      YT_CLIENT_SECRET:  ${{ secrets.YT_CLIENT_SECRET }}
+      YT_REFRESH_TOKEN:  ${{ secrets.YT_REFRESH_TOKEN }}
+      YOUTUBE_PRIVACY:   "public"
 
     steps:
-      - name: Checkout wrapper (repo PUBLIC)
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
+      - name: Use Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Cache models (Coqui/HF)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/tts
+            ~/.cache/huggingface
+            ./.hf_models
+          key: xtts-vn-cache-${{ runner.os }}-${{ hashFiles('src/main.py') }}
+          restore-keys: |
+            xtts-vn-cache-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Torch/torchaudio (CPU) từ index PyTorch
+          pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.4.*" "torchaudio==2.4.*"
+          # Các gói còn lại từ PyPI chuẩn
+          pip install -i https://pypi.org/simple "transformers==4.44.2" "TTS==0.22.0" \
+            huggingface_hub soundfile numpy requests tqdm underthesea vinorm google-genai
+          # --- PIN huggingface_hub để DISABLE_XET hoạt động ổn định ---
+          pip uninstall -y huggingface_hub || true
+          pip install --no-deps --force-reinstall "huggingface_hub<0.34"
+          # -----------------------------------------------------------
+          sudo apt-get update && sudo apt-get install -y ffmpeg libsndfile1 fonts-dejavu-core
+          python - <<'PY'
+          import sys, torch, torchaudio, transformers
+          print("[VERSIONS]", sys.version.split()[0], torch.__version__, torchaudio.__version__, transformers.__version__)
+          PY
+          pip install -i https://pypi.org/simple "google-api-python-client" "google-auth" "google-auth-oauthlib" pillow
+
+      - name: Prepare inputs for src layout (copy nếu cần)
+        run: |
+          set -e
+          echo "[PWD] $(pwd)"
+          ls -la
+          # Nếu tieude.csv chỉ có ở root → copy vào src/
+          if [ -f "tieude.csv" ] && [ ! -f "src/tieude.csv" ]; then
+            echo "[INFO] Copy tieude.csv -> src/tieude.csv"
+            cp "tieude.csv" "src/tieude.csv"
+          fi
+          # Nếu assets/ref chỉ có ở root → copy vào src/
+          if [ -d "assets/ref" ] && [ ! -d "src/assets/ref" ]; then
+            echo "[INFO] Copy assets/ref -> src/assets/ref"
+            mkdir -p src/assets
+            cp -r assets/ref src/assets/ref
+          fi
+
+      - name: Sanity check voice & title (src/)
+        run: |
+          test -f "src/main.py" || (echo "::error::Missing src/main.py"; exit 1)
+          if [ -d "src/assets/ref" ] && ls src/assets/ref/*.wav >/dev/null 2>&1; then
+            echo "Using multi-ref in src/assets/ref/"
+          elif [ -f "src/${REF_WAV}" ]; then
+            echo "Using single ref in src/${REF_WAV}"
+          else
+            echo "::error::No reference voice found in src/. Put .wav files in src/assets/ref/ OR provide src/${REF_WAV}" && exit 1
+          fi
+          test -f "src/tieude.csv" || (echo "::error::Missing src/tieude.csv"; exit 1)
+
+      - name: Run src/main.py (Gemini → XTTS → 50 ảnh → video)
+        env:
+          MODEL_REPO: ${{ env.MODEL_REPO }}
+          MODEL_DIR:  ${{ env.MODEL_DIR }}
+          REF_WAV:    ${{ env.REF_WAV }}
+          COQUI_TOS_AGREED: ${{ env.COQUI_TOS_AGREED }}
+          TOP_K: ${{ env.TOP_K }}
+          TOP_P: ${{ env.TOP_P }}
+          R_PEN: ${{ env.R_PEN }}
+          L_PEN: ${{ env.L_PEN }}
+          CHUNK_MAX_CHARS: ${{ env.CHUNK_MAX_CHARS }}
+          SENTENCE_PAUSE_MS: ${{ env.SENTENCE_PAUSE_MS }}
+          IMG_W: ${{ env.IMG_W }}
+          IMG_H: ${{ env.IMG_H }}
+          POLL_IMG_MODEL: ${{ env.POLL_IMG_MODEL }}
+          IMG_RATE_SEC: ${{ env.IMG_RATE_SEC }}
+          IMG_TIMEOUT_SEC: ${{ env.IMG_TIMEOUT_SEC }}
+          TARGET_AUDIO_SEC: ${{ env.TARGET_AUDIO_SEC }}
+          INIT_TARGET_CHARS: ${{ env.INIT_TARGET_CHARS }}
+          INIT_TARGET_SEC_HINT: ${{ env.INIT_TARGET_SEC_HINT }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # YouTube secrets
+          YT_CLIENT_ID:      ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET:  ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN:  ${{ secrets.YT_REFRESH_TOKEN }}
+          YOUTUBE_PRIVACY:   ${{ env.YOUTUBE_PRIVACY }}
+        run: |
+          set -e
+          echo "[RUN] python src/main.py"
+          python src/main.py
+          echo "[TREE out/]"
+          ls -la out/ || true
+          echo "[TREE src/out/]"
+          ls -la src/out/ || true
+
 
       # Quyết định mode auth (không dùng secrets trực tiếp trong if)
       - name: Determine auth mode
