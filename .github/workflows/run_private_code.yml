@@ -1,369 +1,113 @@
-name: run-private-code
+name: Run Private Uploader (YouTube)
 
 on:
-  
   workflow_dispatch: {}
+  # schedule:
+  #   - cron: "30 16 * * *"   # (tuỳ chọn) 23:30 Asia/Bangkok
 
+permissions:
+  contents: read
 
 jobs:
-  run-private:
+  run:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    concurrency:
-      group: run-private-${{ github.ref }}
-      cancel-in-progress: false
-
-    env:
-      # ==== Tuỳ chỉnh nhanh (nếu muốn) ====
-      # XTTS model và cache
-      MODEL_REPO: capleaf/viXTTS
-      MODEL_DIR: ./.hf_models/vn_model
-      REF_WAV: assets/ref_vi.wav               # chỉ fallback; ưu tiên assets/ref/*.wav
-      COQUI_TOS_AGREED: "1"
-      # XTTS hyperparams
-      TOP_K: "1"
-      TOP_P: "0.30"
-      R_PEN: "12.0"
-      L_PEN: "1.05"
-      CHUNK_MAX_CHARS: "200"
-      SENTENCE_PAUSE_MS: "0"
-      # Pollinations
-      IMG_W: "1280"
-      IMG_H: "720"
-      POLL_IMG_MODEL: "flux"
-      IMG_RATE_SEC: "5"
-      IMG_TIMEOUT_SEC: "60"
-      # Thời lượng mục tiêu truyện 
-      TARGET_AUDIO_SEC: "300"
-      INIT_TARGET_CHARS: "3000"
-      INIT_TARGET_SEC_HINT: "300"
-      # ép fallback ngay từ đầu
-      HF_HUB_DISABLE_XET: "1"
-      HF_DL_WORKERS: "4"   # khớp với code trên
-      # YouTube upload
-      YT_CLIENT_ID:      ${{ secrets.YT_CLIENT_ID }}
-      YT_CLIENT_SECRET:  ${{ secrets.YT_CLIENT_SECRET }}
-      YT_REFRESH_TOKEN:  ${{ secrets.YT_REFRESH_TOKEN }}
-      YOUTUBE_PRIVACY:   "public"
+    timeout-minutes: 360
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+      # Clone repo RIÊNG TƯ bằng token (ẩn URL/token trong log)
+      - name: Clone private repo (stealth via GIT_ASKPASS)
+        shell: bash
+        env:
+          GHTOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          PRIVATE_REPO_URL: ${{ secrets.PRIVATE_REPO_URL }}
+        run: |
+          set -Eeuo pipefail
+          test -n "${PRIVATE_REPO_URL}" || (echo "::error::Missing secret PRIVATE_REPO_URL"; exit 1)
+          cat > .askpass.sh << 'EOF'
+#!/usr/bin/env bash
+case "$1" in
+  *Username*) echo "x-access-token" ;;
+  *Password*) echo "${GHTOKEN}" ;;
+  *) echo "${GHTOKEN}" ;;
+esac
+EOF
+          chmod +x .askpass.sh
+          GIT_ASKPASS="$PWD/.askpass.sh" git clone --depth=1 --filter=blob:none "${PRIVATE_REPO_URL}" private-src
+          rm -f .askpass.sh
+          unset GHTOKEN
 
-      - name: Use Python 3.10
+      # Python & system deps (ffmpeg + fonts cho phụ đề)
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
-      - name: Cache models (Coqui/HF)
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.local/share/tts
-            ~/.cache/huggingface
-            ./.hf_models
-          key: xtts-vn-cache-${{ runner.os }}-${{ hashFiles('src/main.py') }}
-          restore-keys: |
-            xtts-vn-cache-${{ runner.os }}-
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1 fonts-dejavu-core
 
-      - name: Install dependencies
+      # Python deps cần cho main.py của bạn (XTTS, HF, Google, v.v.)
+      - name: Install Python deps
+        working-directory: private-src
         run: |
           python -m pip install --upgrade pip
-          # Torch/torchaudio (CPU) từ index PyTorch
           pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.4.*" "torchaudio==2.4.*"
-          # Các gói còn lại từ PyPI chuẩn
-          pip install -i https://pypi.org/simple "transformers==4.44.2" "TTS==0.22.0" \
-            huggingface_hub soundfile numpy requests tqdm underthesea vinorm google-genai
-          # --- PIN huggingface_hub để DISABLE_XET hoạt động ổn định ---
-          pip uninstall -y huggingface_hub || true
-          pip install --no-deps --force-reinstall "huggingface_hub<0.34"
-          # -----------------------------------------------------------
-          sudo apt-get update && sudo apt-get install -y ffmpeg libsndfile1 fonts-dejavu-core
-          python - <<'PY'
-          import sys, torch, torchaudio, transformers
-          print("[VERSIONS]", sys.version.split()[0], torch.__version__, torchaudio.__version__, transformers.__version__)
-          PY
-          pip install -i https://pypi.org/simple "google-api-python-client" "google-auth" "google-auth-oauthlib" pillow
+          pip install "TTS==0.22.0" "transformers==4.44.2" "huggingface_hub<0.34" pillow soundfile numpy requests tqdm underthesea vinorm google-genai
+          pip install "google-api-python-client" "google-auth" "google-auth-oauthlib"
 
-      - name: Prepare inputs for src layout (copy nếu cần)
+      # Bố trí input theo layout src/ nếu cần (không bắt buộc, nhưng an toàn)
+      - name: Prepare inputs (optional copies)
+        working-directory: private-src
+        shell: bash
         run: |
-          set -e
-          echo "[PWD] $(pwd)"
-          ls -la
-          # Nếu tieude.csv chỉ có ở root → copy vào src/
-          if [ -f "tieude.csv" ] && [ ! -f "src/tieude.csv" ]; then
-            echo "[INFO] Copy tieude.csv -> src/tieude.csv"
-            cp "tieude.csv" "src/tieude.csv"
-          fi
-          # Nếu assets/ref chỉ có ở root → copy vào src/
+          set -Eeuo pipefail
           if [ -d "assets/ref" ] && [ ! -d "src/assets/ref" ]; then
-            echo "[INFO] Copy assets/ref -> src/assets/ref"
             mkdir -p src/assets
             cp -r assets/ref src/assets/ref
           fi
-
-      - name: Sanity check voice & title (src/)
-        run: |
-          test -f "src/main.py" || (echo "::error::Missing src/main.py"; exit 1)
-          if [ -d "src/assets/ref" ] && ls src/assets/ref/*.wav >/dev/null 2>&1; then
-            echo "Using multi-ref in src/assets/ref/"
-          elif [ -f "src/${REF_WAV}" ]; then
-            echo "Using single ref in src/${REF_WAV}"
-          else
-            echo "::error::No reference voice found in src/. Put .wav files in src/assets/ref/ OR provide src/${REF_WAV}" && exit 1
-          fi
-          test -f "src/tieude.csv" || (echo "::error::Missing src/tieude.csv"; exit 1)
-
-      - name: Run src/main.py (Gemini → XTTS → 50 ảnh → video)
-        env:
-          MODEL_REPO: ${{ env.MODEL_REPO }}
-          MODEL_DIR:  ${{ env.MODEL_DIR }}
-          REF_WAV:    ${{ env.REF_WAV }}
-          COQUI_TOS_AGREED: ${{ env.COQUI_TOS_AGREED }}
-          TOP_K: ${{ env.TOP_K }}
-          TOP_P: ${{ env.TOP_P }}
-          R_PEN: ${{ env.R_PEN }}
-          L_PEN: ${{ env.L_PEN }}
-          CHUNK_MAX_CHARS: ${{ env.CHUNK_MAX_CHARS }}
-          SENTENCE_PAUSE_MS: ${{ env.SENTENCE_PAUSE_MS }}
-          IMG_W: ${{ env.IMG_W }}
-          IMG_H: ${{ env.IMG_H }}
-          POLL_IMG_MODEL: ${{ env.POLL_IMG_MODEL }}
-          IMG_RATE_SEC: ${{ env.IMG_RATE_SEC }}
-          IMG_TIMEOUT_SEC: ${{ env.IMG_TIMEOUT_SEC }}
-          TARGET_AUDIO_SEC: ${{ env.TARGET_AUDIO_SEC }}
-          INIT_TARGET_CHARS: ${{ env.INIT_TARGET_CHARS }}
-          INIT_TARGET_SEC_HINT: ${{ env.INIT_TARGET_SEC_HINT }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          # YouTube secrets
-          YT_CLIENT_ID:      ${{ secrets.YT_CLIENT_ID }}
-          YT_CLIENT_SECRET:  ${{ secrets.YT_CLIENT_SECRET }}
-          YT_REFRESH_TOKEN:  ${{ secrets.YT_REFRESH_TOKEN }}
-          YOUTUBE_PRIVACY:   ${{ env.YOUTUBE_PRIVACY }}
-        run: |
-          set -e
-          echo "[RUN] python src/main.py"
-          python src/main.py
-          echo "[TREE out/]"
-          ls -la out/ || true
-          echo "[TREE src/out/]"
-          ls -la src/out/ || true
-
-
-      # Quyết định mode auth (không dùng secrets trực tiếp trong if)
-      - name: Determine auth mode
-        id: auth
-        env:
-          HAS_PAT: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          HAS_SSH: ${{ secrets.PRIVATE_SSH_KEY }}
-        run: |
-          if [ -n "$HAS_PAT" ]; then
-            echo "mode=pat" >> "$GITHUB_OUTPUT"
-          elif [ -n "$HAS_SSH" ]; then
-            echo "mode=ssh" >> "$GITHUB_OUTPUT"
-          else
-            echo "mode=none" >> "$GITHUB_OUTPUT"
+          if [ -f "tieude.csv" ] && [ ! -f "src/tieude.csv" ]; then
+            cp tieude.csv src/tieude.csv
           fi
 
-      # >>> FIX LỖI INPUTS KHI CHẠY THEO LỊCH <<<
-      - name: Resolve parameters (support schedule without inputs)
-        id: params
-        run: |
-          repo="${{ inputs.private_repo }}"; [ -z "$repo" ] && repo="toyingsuxwtagoqd-svg/rieng-tu"; echo "repo=$repo" >> "$GITHUB_OUTPUT"
-          ref="${{ inputs.private_ref }}";   [ -z "$ref" ] && ref="main";                                           echo "ref=$ref"   >> "$GITHUB_OUTPUT"
-          wd="${{ inputs.workdir }}";        [ -z "$wd" ]  && wd=".";                                               echo "workdir=$wd" >> "$GITHUB_OUTPUT"
-          privacy="${{ inputs.youtube_privacy }}"; [ -z "$privacy" ] && privacy="public";                           echo "privacy=$privacy" >> "$GITHUB_OUTPUT"
-
-      - name: Export resolved privacy to env
-        run: echo "YOUTUBE_PRIVACY=${{ steps.params.outputs.privacy }}" >> "$GITHUB_ENV"
-
-
-      # KÉO CODE từ repo PRIVATE (PAT)
-      - name: Checkout PRIVATE via PAT
-        if: ${{ steps.auth.outputs.mode == 'pat' }}
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ steps.params.outputs.repo }}
-          ref: ${{ steps.params.outputs.ref }}
-          path: private-src
-          fetch-depth: 1
-          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          persist-credentials: false
-
-      # KÉO CODE từ repo PRIVATE (SSH)
-      - name: Checkout PRIVATE via SSH Deploy Key
-        if: ${{ steps.auth.outputs.mode == 'ssh' }}
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ steps.params.outputs.repo }}
-          ref: ${{ steps.params.outputs.ref }}
-          path: private-src
-          fetch-depth: 1
-          ssh-key: ${{ secrets.PRIVATE_SSH_KEY }}
-          persist-credentials: false
-
-      - name: Fail if no auth available
-        if: ${{ steps.auth.outputs.mode == 'none' }}
-        run: |
-          echo "::error::Không checkout được repo private. Cần PRIVATE_REPO_TOKEN (PAT) hoặc PRIVATE_SSH_KEY (Deploy key)."
-          exit 1
-
-      - name: Verify PRIVATE checkout
-        working-directory: private-src
-        run: |
-          pwd && ls -la
-          echo "== 20 files in commit =="
-          git ls-tree -r --name-only HEAD | head -n 20
-
-      # Tự tìm thư mục chứa src/main.py (kể cả khi không nhập workdir)
-      - name: Detect script path
-        id: find_script
-        run: |
-          set -e
-          BASE="private-src"
-          DEFAULT="${{ steps.params.outputs.workdir }}"
-          CAND=""
-          if [ -n "$DEFAULT" ] && [ -f "$BASE/$DEFAULT/src/main.py" ]; then
-            CAND="$BASE/$DEFAULT"
-          else
-            CAND=$(cd "$BASE" && find . -type f -path "*/src/main.py" -print -quit | sed 's|^\./||' | xargs -I{} dirname {} )
-            [ -n "$CAND" ] && CAND="$BASE/$CAND"
-          fi
-          if [ -z "$CAND" ]; then
-            echo "::error::Không tìm thấy src/main.py trong repo private."
-            exit 1
-          fi
-          echo "dir=$CAND" >> "$GITHUB_OUTPUT"
-          echo "[FOUND] $CAND"
-
-      # Bắt buộc có secrets YT để up thẳng
-      - name: Require YT OAuth secrets
-        shell: bash
-        run: |
-          miss=0
-          for k in YT_CLIENT_ID YT_CLIENT_SECRET YT_REFRESH_TOKEN; do
-            if [ -z "${!k}" ]; then
-              echo "::error::Thiếu secret $k"
-              miss=1
-            fi
-          done
-          if [ "$miss" = "1" ]; then
-            exit 1
-          fi
-          echo "[OK] YT secrets đầy đủ."
-
-
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install system deps (ffmpeg)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('private-src/**/requirements*.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      - name: Install Python deps
-        run: |
-          set -e
-          REQ=$(ls private-src/**/requirements*.txt 2>/dev/null | head -n1 || true)
-          if [ -n "$REQ" ]; then
-            echo "[INFO] Using requirements: $REQ"
-            pip install -r "$REQ"
-          else
-            echo "[INFO] No requirements*.txt found — install tối thiểu"
-            pip install Pillow opencv-python-headless numpy gdown \
-                        google-api-python-client google-auth google-auth-httplib2 \
-                        imageio-ffmpeg
-          fi
-
-      # CHẠY CODE trong repo PRIVATE (upload YouTube trực tiếp)
-      - name: Run pipeline in PRIVATE
-        working-directory: ${{ steps.find_script.outputs.dir }}
-        run: |
-          set -e
-          python -u src/main.py
-
-      # Commit & PUSH 3 CSV về repo PRIVATE qua PAT (nếu checkout bằng PAT)
-      - name: Commit & push state CSVs back to PRIVATE (PAT)
-        if: ${{ steps.auth.outputs.mode == 'pat' }}
+      # Chạy code riêng tư → code sẽ tự upload YouTube nếu secrets hợp lệ
+      - name: Run main.py (YouTube upload inside)
         working-directory: private-src
         env:
-          PUSH_TOKEN_1: ${{ secrets.PRIVATE_REPO_PUSH_TOKEN }}
-          PUSH_TOKEN_2: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          PRIVATE_REPO: ${{ steps.params.outputs.repo }}
-          PRIVATE_REF: ${{ steps.params.outputs.ref }}
-          DIR_FOUND: ${{ steps.find_script.outputs.dir }}
+          # YouTube/Gemini secrets
+          GEMINI_API_KEY:   ${{ secrets.GEMINI_API_KEY }}
+          YT_CLIENT_ID:     ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+          YOUTUBE_PRIVACY:  public
+
+          # XTTS/model & tham số (khớp default trong code của bạn)
+          MODEL_REPO: capleaf/viXTTS
+          MODEL_DIR: ./.hf_models/vn_model
+          REF_WAV: assets/ref_vi.wav
+          COQUI_TOS_AGREED: "1"
+          TOP_K: "1"
+          TOP_P: "0.30"
+          R_PEN: "12.0"
+          L_PEN: "1.05"
+          CHUNK_MAX_CHARS: "200"
+          SENTENCE_PAUSE_MS: "0"
+
+          # Ảnh/video
+          IMG_W: "1280"
+          IMG_H: "720"
+          SEED: "42"
+
+          PYTHONUNBUFFERED: "1"
         run: |
-          set -e
-          TOKEN="${PUSH_TOKEN_1:-$PUSH_TOKEN_2}"
-          [ -z "$TOKEN" ] && { echo "::warning::Không có token có quyền ghi. Bỏ qua commit."; exit 0; }
+          set -Eeuo pipefail
+          if [ -f "src/main.py" ]; then
+            python src/main.py
+          else
+            python main.py
+          fi
 
-          FILES=""
-          for f in tieudedalay.csv; do
-            [ -f "$f" ] && FILES="$FILES $f"
-            [ -n "$DIR_FOUND" ] && [ -f "$DIR_FOUND/$f" ] && FILES="$FILES $DIR_FOUND/$f"
-          done
-          [ -z "$FILES" ] && { echo "[INFO] Không có CSV để commit."; exit 0; }
-
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin "https://x-access-token:${TOKEN}@github.com/${PRIVATE_REPO}.git"
-
-          CURBR=$(git rev-parse --abbrev-ref HEAD || true)
-          [ "$CURBR" = "HEAD" ] && git checkout -b ci-state-update
-
-          git add -- $FILES
-          git diff --cached --quiet && { echo "[INFO] Không có thay đổi."; exit 0; }
-          git commit -m "ci(state): update tieudedalay.csv"
-          git push origin HEAD:"${PRIVATE_REF}"
-
-      # Commit & PUSH 3 CSV về repo PRIVATE qua SSH (nếu checkout bằng SSH)
-      - name: Commit & push state CSVs back to PRIVATE (SSH)
-        if: ${{ steps.auth.outputs.mode == 'ssh' }}
-        working-directory: private-src
-        env:
-          PRIVATE_SSH_KEY: ${{ secrets.PRIVATE_SSH_KEY }}
-          PRIVATE_REPO: ${{ steps.params.outputs.repo }}
-          PRIVATE_REF: ${{ steps.params.outputs.ref }}
-          DIR_FOUND: ${{ steps.find_script.outputs.dir }}
-        run: |
-          set -e
-          [ -z "$PRIVATE_SSH_KEY" ] && { echo "::warning::Thiếu PRIVATE_SSH_KEY. Bỏ qua commit."; exit 0; }
-
-          install -m 700 -d ~/.ssh
-          echo "$PRIVATE_SSH_KEY" > ~/.ssh/id_deploy
-          chmod 600 ~/.ssh/id_deploy
-          eval "$(ssh-agent -s)"
-          ssh-add ~/.ssh/id_deploy
-          printf "Host github.com\n  StrictHostKeyChecking accept-new\n" >> ~/.ssh/config
-
-          FILES=""
-          for f in tieudedalay.csv; do
-            [ -f "$f" ] && FILES="$FILES $f"
-            [ -n "$DIR_FOUND" ] && [ -f "$DIR_FOUND/$f" ] && FILES="$FILES $DIR_FOUND/$f"
-          done
-          [ -z "$FILES" ] && { echo "[INFO] Không có CSV để commit."; exit 0; }
-
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin "git@github.com:${PRIVATE_REPO}.git"
-
-          CURBR=$(git rev-parse --abbrev-ref HEAD || true)
-          [ "$CURBR" = "HEAD" ] && git checkout -b ci-state-update
-
-          git add -- $FILES
-          git diff --cached --quiet && { echo "[INFO] Không có thay đổi."; exit 0; }
-          git commit -m "ci(state): update tieudedalay.csv"
-          git push origin HEAD:"${PRIVATE_REF}"
+      # Xoá sạch source riêng tư sau khi chạy (không lộ code)
+      - name: Clean private sources
+        if: always()
+        run: rm -rf private-src
