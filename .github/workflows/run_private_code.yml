@@ -53,6 +53,11 @@ jobs:
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
 
+          # --- Giới hạn thời lượng & “hints” cho sinh văn bản ---
+          TARGET_AUDIO_SEC: "300"       # ~5 phút
+          INIT_TARGET_CHARS: "3000"
+          INIT_TARGET_SEC_HINT: "300"
+
           MODEL_REPO: capleaf/viXTTS
           MODEL_DIR: ./.hf_models/vn_model
           REF_WAV: assets/ref_vi.wav
