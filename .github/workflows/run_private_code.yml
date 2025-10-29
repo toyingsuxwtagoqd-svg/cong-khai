@@ -293,7 +293,7 @@ jobs:
         working-directory: ${{ steps.find_script.outputs.dir }}
         run: |
           set -e
-          python -u scripts/generate_thumbnails.py
+          python -u src/main.py
 
       # Commit & PUSH 3 CSV về repo PRIVATE qua PAT (nếu checkout bằng PAT)
       - name: Commit & push state CSVs back to PRIVATE (PAT)
@@ -311,7 +311,7 @@ jobs:
           [ -z "$TOKEN" ] && { echo "::warning::Không có token có quyền ghi. Bỏ qua commit."; exit 0; }
 
           FILES=""
-          for f in links_done.csv promptdalay.csv tieudedalay.csv; do
+          for f in tieudedalay.csv; do
             [ -f "$f" ] && FILES="$FILES $f"
             [ -n "$DIR_FOUND" ] && [ -f "$DIR_FOUND/$f" ] && FILES="$FILES $DIR_FOUND/$f"
           done
@@ -326,7 +326,7 @@ jobs:
 
           git add -- $FILES
           git diff --cached --quiet && { echo "[INFO] Không có thay đổi."; exit 0; }
-          git commit -m "ci(state): update promptdalay.csv, links_done.csv, tieudedalay.csv"
+          git commit -m "ci(state): update tieudedalay.csv"
           git push origin HEAD:"${PRIVATE_REF}"
 
       # Commit & PUSH 3 CSV về repo PRIVATE qua SSH (nếu checkout bằng SSH)
@@ -350,7 +350,7 @@ jobs:
           printf "Host github.com\n  StrictHostKeyChecking accept-new\n" >> ~/.ssh/config
 
           FILES=""
-          for f in promptdalay.csv links_done.csv tieudedalay.csv; do
+          for f in tieudedalay.csv; do
             [ -f "$f" ] && FILES="$FILES $f"
             [ -n "$DIR_FOUND" ] && [ -f "$DIR_FOUND/$f" ] && FILES="$FILES $DIR_FOUND/$f"
           done
@@ -365,5 +365,5 @@ jobs:
 
           git add -- $FILES
           git diff --cached --quiet && { echo "[INFO] Không có thay đổi."; exit 0; }
-          git commit -m "ci(state): update promptdalay.csv, links_done.csv, tieudedalay.csv"
+          git commit -m "ci(state): update tieudedalay.csv"
           git push origin HEAD:"${PRIVATE_REF}"
