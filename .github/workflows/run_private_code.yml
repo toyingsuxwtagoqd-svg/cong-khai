@@ -58,6 +58,7 @@ jobs:
           INIT_TARGET_CHARS: "5000"
           INIT_TARGET_SEC_HINT: "300"
 
+          MODEL_DIR_SHARED: /home/runner/.cache/xtts   # <--- THÊM
           MODEL_REPO: capleaf/viXTTS
           MODEL_DIR: ./.hf_models/vn_model
           REF_WAV: assets/ref_vi.wav
