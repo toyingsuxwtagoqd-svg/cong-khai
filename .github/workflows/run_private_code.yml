@@ -85,6 +85,12 @@ jobs:
             python main.py
           fi
 
+      - name: Sync CSV back to root   # ← THÊM ĐOẠN NÀY
+        run: |
+          set -e
+          [ -f src/tieudedalay.csv ] && cp src/tieudedalay.csv . || true
+          [ -f src/tieude.csv ] && cp src/tieude.csv . || true
+
       - name: Clean private sources
         if: always()
         run: rm -rf private-src
