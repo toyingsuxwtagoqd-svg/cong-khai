@@ -85,39 +85,24 @@ jobs:
             python main.py
           fi
 
-      # Commit & PUSH 3 CSV về repo PRIVATE qua PAT (nếu checkout bằng PAT)
-      - name: Commit & push state CSVs back to PRIVATE (PAT)
-        if: ${{ steps.auth.outputs.mode == 'pat' }}
-        working-directory: private-src
-        env:
-          PUSH_TOKEN_1: ${{ secrets.PRIVATE_REPO_PUSH_TOKEN }}
-          PUSH_TOKEN_2: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          PRIVATE_REPO: ${{ steps.params.outputs.repo }}
-          PRIVATE_REF: ${{ steps.params.outputs.ref }}
-          DIR_FOUND: ${{ steps.find_script.outputs.dir }}
+      - name: Sync CSV back to root
         run: |
           set -e
-          TOKEN="${PUSH_TOKEN_1:-$PUSH_TOKEN_2}"
-          [ -z "$TOKEN" ] && { echo "::warning::Không có token có quyền ghi. Bỏ qua commit."; exit 0; }
+          [ -f src/tieude.csv ] && cp src/tieude.csv . || true
+          # KHÔNG copy tieudedalay.csv từ src vì main.py đã ghi ở gốc
 
-          FILES=""
-          for f in tieudedalay.csv; do
-            [ -f "$f" ] && FILES="$FILES $f"
-            [ -n "$DIR_FOUND" ] && [ -f "$DIR_FOUND/$f" ] && FILES="$FILES $DIR_FOUND/$f"
-          done
-          [ -z "$FILES" ] && { echo "[INFO] Không có CSV để commit."; exit 0; }
-
+      - name: Commit & push CSV back to THIS repo
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin "https://x-access-token:${TOKEN}@github.com/${PRIVATE_REPO}.git"
+          git add tieudedalay.csv src/tieude.csv || true
+          git diff --cached --quiet && { echo "[INFO] Không có thay đổi CSV."; exit 0; }
+          git commit -m "ci: update csv state"
+          git push
 
-          CURBR=$(git rev-parse --abbrev-ref HEAD || true)
-          [ "$CURBR" = "HEAD" ] && git checkout -b ci-state-update
-
-          git add -- $FILES
-          git diff --cached --quiet && { echo "[INFO] Không có thay đổi."; exit 0; }
-          git commit -m "ci(state): update tieudedalay.csv"
-          git push origin HEAD:"${PRIVATE_REF}"
           
       - name: Clean private sources
         if: always()
