@@ -19,7 +19,6 @@ jobs:
       - name: Checkout private repo (token, read-only)
         uses: actions/checkout@v4
         with:
-          # Lưu "owner/private-repo" vào Secret: PRIVATE_REPO_REPOSITORY
           repository: ${{ secrets.PRIVATE_REPO_REPOSITORY }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           ref: main
@@ -52,29 +51,23 @@ jobs:
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
-
-          # --- Giới hạn thời lượng & “hints” cho sinh văn bản ---
-          TARGET_AUDIO_SEC: "600"       # ~5 phút
+          TARGET_AUDIO_SEC: "600"
           INIT_TARGET_CHARS: "5000"
           INIT_TARGET_SEC_HINT: "300"
-
-          MODEL_DIR_SHARED: /home/runner/.cache/xtts   # <--- THÊM
+          MODEL_DIR_SHARED: /home/runner/.cache/xtts
           MODEL_REPO: capleaf/viXTTS
           MODEL_DIR: ./.hf_models/vn_model
           REF_WAV: assets/ref_vi.wav
           COQUI_TOS_AGREED: "1"
-
           TOP_K: "1"
           TOP_P: "0.30"
           R_PEN: "12.0"
           L_PEN: "1.05"
           CHUNK_MAX_CHARS: "200"
           SENTENCE_PAUSE_MS: "0"
-
           IMG_W: "1280"
           IMG_H: "720"
           SEED: "42"
-
           YOUTUBE_PRIVACY: public
           PYTHONUNBUFFERED: "1"
         run: |
@@ -85,38 +78,30 @@ jobs:
             python main.py
           fi
 
-      # Commit & PUSH 3 CSV về repo PRIVATE qua PAT (nếu checkout bằng PAT)
+      # >>> CHỈ THÊM BƯỚC NÀY <<<
+      - name: Copy tieudedalay.csv vào private-src
+        run: |
+          if [ -f "tieudedalay.csv" ]; then
+            cp tieudedalay.csv private-src/tieudedalay.csv
+          fi
+
+      # Commit & PUSH về PRIVATE qua PAT
       - name: Commit & push state CSVs back to PRIVATE (PAT)
-        if: ${{ steps.auth.outputs.mode == 'pat' }}
         working-directory: private-src
         env:
-          PUSH_TOKEN_1: ${{ secrets.PRIVATE_REPO_PUSH_TOKEN }}
-          PUSH_TOKEN_2: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          PRIVATE_REPO: ${{ steps.params.outputs.repo }}
-          PRIVATE_REF: ${{ steps.params.outputs.ref }}
-          DIR_FOUND: ${{ steps.find_script.outputs.dir }}
+          PUSH_TOKEN: ${{ secrets.PRIVATE_REPO_PUSH_TOKEN }}
+          REPO: ${{ secrets.PRIVATE_REPO_REPOSITORY }}
         run: |
           set -e
-          TOKEN="${PUSH_TOKEN_1:-$PUSH_TOKEN_2}"
-          [ -z "$TOKEN" ] && { echo "::warning::Không có token có quyền ghi. Bỏ qua commit."; exit 0; }
+          [ -z "$PUSH_TOKEN" ] && { echo "::warning::Không có token có quyền ghi. Bỏ qua commit."; exit 0; }
 
-          FILES=""
-          for f in tieudedalay.csv; do
-            [ -f "$f" ] && FILES="$FILES $f"
-            [ -n "$DIR_FOUND" ] && [ -f "$DIR_FOUND/$f" ] && FILES="$FILES $DIR_FOUND/$f"
-          done
-          [ -z "$FILES" ] && { echo "[INFO] Không có CSV để commit."; exit 0; }
+          [ -f "tieudedalay.csv" ] || { echo "[INFO] Không có tieudedalay.csv trong private-src để commit."; exit 0; }
 
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin "https://x-access-token:${TOKEN}@github.com/${PRIVATE_REPO}.git"
+          git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${REPO}.git"
 
-          CURBR=$(git rev-parse --abbrev-ref HEAD || true)
-          [ "$CURBR" = "HEAD" ] && git checkout -b ci-state-update
-
-          git add -- $FILES
+          git add tieudedalay.csv
           git diff --cached --quiet && { echo "[INFO] Không có thay đổi."; exit 0; }
           git commit -m "ci(state): update tieudedalay.csv"
-          git push origin HEAD:"${PRIVATE_REF}"
-
-          
+          git push origin HEAD:main
