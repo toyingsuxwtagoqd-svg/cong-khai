@@ -85,11 +85,11 @@ jobs:
             python main.py
           fi
 
-      - name: Sync CSV back to root   # ← THÊM ĐOẠN NÀY
+      - name: Sync CSV back to root
         run: |
           set -e
-          [ -f src/tieudedalay.csv ] && cp src/tieudedalay.csv . || true
           [ -f src/tieude.csv ] && cp src/tieude.csv . || true
+          # KHÔNG copy tieudedalay.csv vì main.py đã ghi đúng ở gốc
 
       - name: Clean private sources
         if: always()
