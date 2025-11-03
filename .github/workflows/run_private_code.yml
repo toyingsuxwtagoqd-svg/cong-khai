@@ -65,6 +65,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg libsndfile1 fonts-dejavu-core
 
+      - name: Provision 10GB swap (avoid OOM)
+        run: |
+          sudo fallocate -l 10G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          sudo sysctl vm.swappiness=60
+          echo "[INFO] Swap on:"
+          swapon --show
+
+
       # 5) Python deps
       - name: Install Python deps
         working-directory: private-src
@@ -102,6 +113,12 @@ jobs:
 
           YOUTUBE_PRIVACY: public
           PYTHONUNBUFFERED: "1"
+
+          OMP_NUM_THREADS: "1"
+          MKL_NUM_THREADS: "1"
+          OPENBLAS_NUM_THREADS: "1"
+          NUMEXPR_NUM_THREADS: "1"
+        
         run: |
           set -Eeuo pipefail
           if [ -f "src/main.py" ]; then
