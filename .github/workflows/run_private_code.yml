@@ -4,7 +4,7 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: run-private-code
@@ -16,6 +16,11 @@ jobs:
     timeout-minutes: 360
 
     steps:
+
+      # 0) Checkout repo CÔNG KHAI (để lưu state ở đây)
+      - name: Checkout public repo
+        uses: actions/checkout@v4
+    
       # 1) Lấy repo riêng tư về thư mục private-src/
       - name: Checkout private repo
         uses: actions/checkout@v4
@@ -99,6 +104,16 @@ jobs:
         run: |
           if [ -f "tieudedalay.csv" ]; then
             cp tieudedalay.csv private-src/tieudedalay.csv
+          fi
+
+      - name: Commit state to PUBLIC repo
+        run: |
+          if [ -f "tieudedalay.csv" ]; then
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add tieudedalay.csv
+            git diff --cached --quiet || git commit -m "ci(state): update tieudedalay.csv"
+            git push
           fi
 
       # 8) Commit & push về repo riêng tư nếu token có quyền ghi
