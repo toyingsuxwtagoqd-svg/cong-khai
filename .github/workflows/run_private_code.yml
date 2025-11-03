@@ -1,4 +1,4 @@
-name: Run Private Code (YouTube)
+name: "Run Private Code (YouTube)"
 
 on:
   workflow_dispatch: {}
@@ -20,19 +20,37 @@ jobs:
       - name: Checkout private repo
         uses: actions/checkout@v4
         with:
-          repository: ${{ secrets.PRIVATE_REPO_REPOSITORY }}   # ví dụ: nguoi-viet/cong-khai-private
-          token: ${{ secrets.PRIVATE_REPO_TOKEN }}             # token phải có quyền read (và càng tốt là write)
+          repository: ${{ secrets.PRIVATE_REPO_REPOSITORY }}   # ví dụ: org/private-repo
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}             # token có quyền read (nếu push thì cần write)
           ref: main
           path: private-src
           fetch-depth: 1
           persist-credentials: false
 
-      # 2) Nếu trong repo riêng tư đã có tieudedalay.csv thì đẩy nó ra ngoài
-      #    vì main.py đang ghi ở mức ../tieudedalay.csv
-      - name: Pre-sync tieudedalay.csv (private-src -> workspace)
+      # 2) Pre-sync: hợp nhất tieudedalay.csv vào mọi vị trí có thể được main.py dùng
+      - name: Pre-sync tieudedalay.csv (normalize locations)
         run: |
-          if [ -f "private-src/tieudedalay.csv" ]; then
-            cp private-src/tieudedalay.csv ./tieudedalay.csv
+          set -e
+          # Các khả năng sẵn có:
+          ROOT_WS=./tieudedalay.csv
+          PRIV_ROOT=private-src/tieudedalay.csv
+          PRIV_SRC=private-src/src/tieudedalay.csv
+
+          pick_src=""
+          if   [ -f "$PRIV_SRC"  ]; then pick_src="$PRIV_SRC"
+          elif [ -f "$PRIV_ROOT" ]; then pick_src="$PRIV_ROOT"
+          elif [ -f "$ROOT_WS"   ]; then pick_src="$ROOT_WS"
+          fi
+
+          # Nếu có file ở bất kỳ nơi nào → trải đều cho 3 nơi
+          if [ -n "$pick_src" ]; then
+            echo "[INFO] Seed tieudedalay from: $pick_src"
+            cp "$pick_src" "$ROOT_WS"    || true
+            mkdir -p private-src/src
+            cp "$pick_src" "$PRIV_ROOT"  || true
+            cp "$pick_src" "$PRIV_SRC"   || true
+          else
+            echo "[INFO] No existing tieudedalay.csv found (first run is fine)."
           fi
 
       # 3) Python
@@ -47,7 +65,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg libsndfile1 fonts-dejavu-core
 
-      # 5) Python deps (đúng như bạn đang xài)
+      # 5) Python deps
       - name: Install Python deps
         working-directory: private-src
         run: |
@@ -60,13 +78,11 @@ jobs:
       - name: Run main.py (video + thumb + append tieudedalay.csv)
         working-directory: private-src
         env:
-          # --- bắt buộc để ở repo công khai ---
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
 
-          # --- phần còn lại: chỉ là cấu hình, không bí mật ---
           TARGET_AUDIO_SEC: "600"
           INIT_TARGET_CHARS: "5000"
           INIT_TARGET_SEC_HINT: "300"
@@ -89,19 +105,44 @@ jobs:
         run: |
           set -Eeuo pipefail
           if [ -f "src/main.py" ]; then
+            echo "[RUN] python src/main.py"
             python src/main.py
           else
+            echo "[RUN] python main.py"
             python main.py
           fi
 
-      # 7) Sau khi chạy xong: main.py đã ghi ../tieudedalay.csv → kéo lại về private-src để commit
-      - name: Post-sync tieudedalay.csv (workspace -> private-src)
+      # 7) Post-sync: gom tieudedalay.csv từ nơi main.py có thể đã ghi → đưa về private-src root + src
+      - name: Post-sync tieudedalay.csv (collect & normalize)
         run: |
-          if [ -f "tieudedalay.csv" ]; then
-            cp tieudedalay.csv private-src/tieudedalay.csv
+          set -e
+          ROOT_WS=./tieudedalay.csv
+          PRIV_ROOT=private-src/tieudedalay.csv
+          PRIV_SRC=private-src/src/tieudedalay.csv
+
+          # Ưu tiên file mới nhất nếu có nhiều bản
+          newest=""
+          for f in "$ROOT_WS" "$PRIV_SRC" "$PRIV_ROOT"; do
+            if [ -f "$f" ]; then
+              if [ -z "$newest" ]; then
+                newest="$f"
+              else
+                # so sánh mtime
+                if [ "$f" -nt "$newest" ]; then newest="$f"; fi
+              fi
+            fi
+          done
+
+          if [ -n "$newest" ]; then
+            echo "[INFO] Normalize from newest: $newest"
+            cp "$newest" "$ROOT_WS"   || true
+            cp "$newest" "$PRIV_ROOT" || true
+            cp "$newest" "$PRIV_SRC"  || true
+          else
+            echo "[INFO] No tieudedalay.csv produced."
           fi
 
-      # 8) Commit & push về repo riêng tư nếu token có quyền ghi
+      # 8) Commit & push về repo riêng tư (nếu token có quyền ghi)
       - name: Commit & push tieudedalay.csv back to PRIVATE
         working-directory: private-src
         env:
@@ -109,22 +150,21 @@ jobs:
           REPO: ${{ secrets.PRIVATE_REPO_REPOSITORY }}
         run: |
           set -e
-          # nếu token chỉ read → bỏ qua nhẹ nhàng
           if [ -z "$TOKEN" ]; then
-            echo "[INFO] Không có PRIVATE_REPO_TOKEN → bỏ qua push."
+            echo "[INFO] No PRIVATE_REPO_TOKEN → skip push."
             exit 0
           fi
 
-          if [ ! -f "tieudedalay.csv" ]; then
-            echo "[INFO] Không có tieudedalay.csv để commit."
-            exit 0
-          fi
-
+          # đảm bảo đang ở nhánh main và up-to-date
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${TOKEN}@github.com/${REPO}.git"
+          git fetch origin main || true
+          git checkout -B main || true
+          git pull --rebase origin main || true
 
-          git add tieudedalay.csv
-          git diff --cached --quiet && { echo "[INFO] Không có thay đổi."; exit 0; }
+          # add cả 2 vị trí khả dĩ
+          git add tieudedalay.csv src/tieudedalay.csv 2>/dev/null || true
+          git diff --cached --quiet && { echo "[INFO] No changes to commit."; exit 0; }
           git commit -m "ci(state): update tieudedalay.csv"
           git push origin HEAD:main
