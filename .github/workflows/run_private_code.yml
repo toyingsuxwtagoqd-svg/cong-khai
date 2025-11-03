@@ -85,21 +85,25 @@ jobs:
             cp tieudedalay.csv private-src/tieudedalay.csv
           fi
 
-      # Commit & PUSH về PRIVATE qua PAT
-      - name: Commit & push state CSVs back to PRIVATE (PAT)
+      - name: Commit & push tieudedalay.csv back to PRIVATE (dùng PRIVATE_REPO_TOKEN)
         working-directory: private-src
         env:
-          PUSH_TOKEN: ${{ secrets.PRIVATE_REPO_PUSH_TOKEN }}
+          TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
           REPO: ${{ secrets.PRIVATE_REPO_REPOSITORY }}
         run: |
           set -e
-          [ -z "$PUSH_TOKEN" ] && { echo "::warning::Không có token có quyền ghi. Bỏ qua commit."; exit 0; }
 
-          [ -f "tieudedalay.csv" ] || { echo "[INFO] Không có tieudedalay.csv trong private-src để commit."; exit 0; }
+          # không có token hoặc token chỉ read → bỏ qua
+          if [ -z "$TOKEN" ]; then
+            echo "[INFO] Không có PRIVATE_REPO_TOKEN → bỏ qua push."
+            exit 0
+          fi
+
+          [ -f "tieudedalay.csv" ] || { echo "[INFO] Không có tieudedalay.csv để commit."; exit 0; }
 
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${REPO}.git"
+          git remote set-url origin "https://x-access-token:${TOKEN}@github.com/${REPO}.git"
 
           git add tieudedalay.csv
           git diff --cached --quiet && { echo "[INFO] Không có thay đổi."; exit 0; }
