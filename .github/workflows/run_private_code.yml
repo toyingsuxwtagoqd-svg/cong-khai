@@ -181,7 +181,7 @@ jobs:
           git pull --rebase origin main || true
 
           # add cả 2 vị trí khả dĩ
-          git add tieudedalay.csv src/tieudedalay.csv 2>/dev/null || true
+          git add tieudedalay.csv src/tieudedalay.csv .state/* 2>/dev/null || true
           git diff --cached --quiet && { echo "[INFO] No changes to commit."; exit 0; }
           git commit -m "ci(state): update tieudedalay.csv"
           git push origin HEAD:main
