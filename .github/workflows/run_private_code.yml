@@ -94,22 +94,22 @@ jobs:
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
 
-          TARGET_AUDIO_SEC: "600"
+          TARGET_AUDIO_SEC: "7200"
           INIT_TARGET_CHARS: "5000"
           INIT_TARGET_SEC_HINT: "300"
 
-          TOP_K: "1"
-          TOP_P: "0.30"
-          R_PEN: "12.0"
-          L_PEN: "1.05"
-          CHUNK_MAX_CHARS: "170"
-          SENTENCE_PAUSE_MS: "0"
+          TOP_K: "60"
+          TOP_P: "0.90"
+          R_PEN: "1.20"
+          L_PEN: "1"
+          CHUNK_MAX_CHARS: "150"
+          SENTENCE_PAUSE_MS: "150"
 
           IMG_W: "1280"
           IMG_H: "720"
           POLL_IMG_MODEL: "flux-anime"
           IMG_RATE_SEC: "1.5"
-          IMG_TIMEOUT_SEC: "15"
+          IMG_TIMEOUT_SEC: "20"
 
           YOUTUBE_PRIVACY: public
           PYTHONUNBUFFERED: "1"
