@@ -130,34 +130,50 @@ jobs:
           fi
 
       # 7) Post-sync: gom tieudedalay.csv từ nơi main.py có thể đã ghi → đưa về private-src root + src
-      - name: Post-sync tieudedalay.csv (collect & normalize)
+      
+      - name: One-time move tieudedalay.csv to repo root
+        working-directory: private-src
         run: |
           set -e
-          ROOT_WS=./tieudedalay.csv
-          PRIV_ROOT=private-src/tieudedalay.csv
-          PRIV_SRC=private-src/src/tieudedalay.csv
-
-          # Ưu tiên file mới nhất nếu có nhiều bản
-          newest=""
-          for f in "$ROOT_WS" "$PRIV_SRC" "$PRIV_ROOT"; do
-            if [ -f "$f" ]; then
-              if [ -z "$newest" ]; then
-                newest="$f"
-              else
-                # so sánh mtime
-                if [ "$f" -nt "$newest" ]; then newest="$f"; fi
-              fi
-            fi
-          done
-
-          if [ -n "$newest" ]; then
-            echo "[INFO] Normalize from newest: $newest"
-            cp "$newest" "$ROOT_WS"   || true
-            cp "$newest" "$PRIV_ROOT" || true
-            cp "$newest" "$PRIV_SRC"  || true
+          # Nếu file nằm ở src/ mà gốc chưa có, move về gốc
+          if [ -e "src/tieudedalay.csv" ] && [ ! -e "tieudedalay.csv" ]; then
+            git mv -f src/tieudedalay.csv tieudedalay.csv
+            echo "[OK] Moved src/tieudedalay.csv -> tieudedalay.csv"
           else
-            echo "[INFO] No tieudedalay.csv produced."
+            echo "[SKIP] Không cần move (đã ở gốc hoặc không tồn tại src/tieudedalay.csv)"
           fi
+
+
+      - name: Normalize tieudedalay.csv
+        working-directory: private-src
+        run: |
+          set -e
+
+          root_csv="tieudedalay.csv"
+          src_csv="src/tieudedalay.csv"
+
+          # chọn file mới hơn làm nguồn
+          pick="$root_csv"
+          if [ -e "$src_csv" ] && [ "$src_csv" -nt "$pick" ]; then
+            pick="$src_csv"
+          fi
+          echo "[INFO] Normalize from newest: $(realpath "$pick")"
+
+          # phía còn lại là đích
+          if [ "$pick" = "$root_csv" ]; then
+            dest="$src_csv"
+          else
+            dest="$root_csv"
+          fi
+          mkdir -p "$(dirname "$dest")"
+
+          # tránh copy cùng file hoặc nội dung đã giống hệt
+          if [ "$(realpath "$pick")" != "$(realpath "$dest")" ] && { [ ! -e "$dest" ] || ! cmp -s "$pick" "$dest"; }; then
+            cp -f "$pick" "$dest"
+          else
+            echo "[INFO] Skip copy (same path or identical content)"
+          fi
+
 
       # 8) Commit & push về repo riêng tư (nếu token có quyền ghi)
       - name: Commit & push tieudedalay.csv back to PRIVATE
