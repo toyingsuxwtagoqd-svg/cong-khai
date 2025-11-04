@@ -29,29 +29,31 @@ jobs:
 
       # 2) Pre-sync: hợp nhất tieudedalay.csv vào mọi vị trí có thể được main.py dùng
       - name: Pre-sync tieudedalay.csv (normalize locations)
+        working-directory: private-src
         run: |
           set -e
-          # Các khả năng sẵn có:
-          ROOT_WS=./tieudedalay.csv
-          PRIV_ROOT=private-src/tieudedalay.csv
-          PRIV_SRC=private-src/src/tieudedalay.csv
+          PRIV_ROOT="tieudedalay.csv"
+          PRIV_SRC="src/tieudedalay.csv"
 
           pick_src=""
           if   [ -f "$PRIV_SRC"  ]; then pick_src="$PRIV_SRC"
           elif [ -f "$PRIV_ROOT" ]; then pick_src="$PRIV_ROOT"
-          elif [ -f "$ROOT_WS"   ]; then pick_src="$ROOT_WS"
           fi
 
-          # Nếu có file ở bất kỳ nơi nào → trải đều cho 3 nơi
           if [ -n "$pick_src" ]; then
-            echo "[INFO] Seed tieudedalay from: $pick_src"
-            cp "$pick_src" "$ROOT_WS"    || true
-            mkdir -p private-src/src
-            cp "$pick_src" "$PRIV_ROOT"  || true
-            cp "$pick_src" "$PRIV_SRC"   || true
+            echo "[INFO] Seed tieudedalay from: $(realpath "$pick_src")"
+            mkdir -p "$(dirname "$PRIV_SRC")"
+            # chỉ copy khi khác đường dẫn/nội dung
+            if [ "$(realpath "$pick_src")" != "$(realpath "$PRIV_ROOT")" ] && { [ ! -e "$PRIV_ROOT" ] || ! cmp -s "$pick_src" "$PRIV_ROOT"; }; then
+              cp -f "$pick_src" "$PRIV_ROOT"
+            fi
+            if [ "$(realpath "$pick_src")" != "$(realpath "$PRIV_SRC")" ] && { [ ! -e "$PRIV_SRC" ] || ! cmp -s "$pick_src" "$PRIV_SRC"; }; then
+              cp -f "$pick_src" "$PRIV_SRC"
+            fi
           else
             echo "[INFO] No existing tieudedalay.csv found (first run is fine)."
           fi
+
 
       # 3) Python
       - name: Setup Python
@@ -202,5 +204,5 @@ jobs:
           # add cả 2 vị trí khả dĩ
           git add tieudedalay.csv src/tieudedalay.csv .state/* 2>/dev/null || true
           git diff --cached --quiet && { echo "[INFO] No changes to commit."; exit 0; }
-          git commit -m "ci(state): update tieudedalay.csv"
+          git commit -m "ci(state): update tieudedalay.csv and .state"
           git push origin HEAD:main
