@@ -178,6 +178,9 @@ jobs:
           git remote set-url origin "https://x-access-token:${TOKEN}@github.com/${REPO}.git"
           git fetch origin main || true
           git checkout -B main || true
+          git add -A || true
+          git diff --cached --quiet || git commit -m "ci(pre-sync): snapshot before rebase"
+
           git pull --rebase origin main || true
 
           # add cả 2 vị trí khả dĩ
