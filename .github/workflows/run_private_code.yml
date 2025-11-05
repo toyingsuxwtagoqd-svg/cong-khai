@@ -118,6 +118,10 @@ jobs:
           MKL_NUM_THREADS: "1"
           OPENBLAS_NUM_THREADS: "1"
           NUMEXPR_NUM_THREADS: "1"
+
+          # 👇 THÊM 2 DÒNG NÀY
+          GENAI_MAX_RETRIES: "9"
+          GENAI_BACKOFF_BASE: "2.0"
         
         run: |
           set -Eeuo pipefail
