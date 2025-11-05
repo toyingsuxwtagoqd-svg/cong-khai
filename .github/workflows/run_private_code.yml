@@ -96,19 +96,19 @@ jobs:
 
           # ----- tốc độ & chất lượng -----
           # BẬT turbo nhanh nhất (soft-sub, không burn):
-          FAST_MODE: "1"              # "1" = soft-sub, "0" = burn phụ đề
+          FAST_MODE: "0"              # "1" = soft-sub, "0" = burn phụ đề
           OUT_FPS: "15"               # 15fps đủ mượt cho slideshow, giảm 50% khối lượng render
           X264_PRESET: "ultrafast"    # nhanh nhất; nếu muốn đẹp hơn dùng "veryfast" hoặc "faster"
           FAST_AUDIO: "1"             # hậu kỳ nhẹ (chỉ loudnorm)
 
-          TARGET_AUDIO_SEC: "7200"
+          TARGET_AUDIO_SEC: "3600"
           INIT_TARGET_CHARS: "5000"
           INIT_TARGET_SEC_HINT: "300"
 
           # Sáng tạo + chống lặp cho Gemini
-          GEN_TEMP: "1.05"                 # 1.0–1.1: sáng tạo/ổn định
+          GEN_TEMP: "1.1"                 # 1.0–1.1: sáng tạo/ổn định
           GEN_TOP_P: "0.80"
-          NOVEL_MIN_DETAILS: "7"           # mỗi chương ≥6 chi tiết mới
+          NOVEL_MIN_DETAILS: "10"           # mỗi chương 10 chi tiết mới
           NO_REPEAT_CONTEXT_CHARS: "3000"  # đọc lại 3000 ký tự gần nhất
           DO_NOT_REPEAT_MAX: "40"          # tối đa 40 câu cấm lặp
 
