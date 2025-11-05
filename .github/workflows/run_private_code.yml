@@ -105,12 +105,19 @@ jobs:
           INIT_TARGET_CHARS: "5000"
           INIT_TARGET_SEC_HINT: "300"
 
-          TOP_K: "60"
-          TOP_P: "0.90"
-          R_PEN: "1.20"
-          L_PEN: "1"
-          CHUNK_MAX_CHARS: "150"
-          SENTENCE_PAUSE_MS: "150"
+          # Sáng tạo + chống lặp cho Gemini
+          GEN_TEMP: "1.05"                 # 1.0–1.1: sáng tạo/ổn định
+          GEN_TOP_P: "0.80"
+          NOVEL_MIN_DETAILS: "6"           # mỗi chương ≥6 chi tiết mới
+          NO_REPEAT_CONTEXT_CHARS: "3000"  # đọc lại 3000 ký tự gần nhất
+          DO_NOT_REPEAT_MAX: "40"          # tối đa 40 câu cấm lặp
+
+          TOP_K: "1"
+          TOP_P: "0.45"
+          R_PEN: "8.0"
+          L_PEN: "1.05"
+          CHUNK_MAX_CHARS: "170"
+          SENTENCE_PAUSE_MS: "0"
 
           IMG_W: "1280"
           IMG_H: "720"
