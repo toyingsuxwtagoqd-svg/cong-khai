@@ -94,6 +94,13 @@ jobs:
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
 
+          # ----- tốc độ & chất lượng -----
+          # BẬT turbo nhanh nhất (soft-sub, không burn):
+          FAST_MODE: "1"              # "1" = soft-sub, "0" = burn phụ đề
+          OUT_FPS: "15"               # 15fps đủ mượt cho slideshow, giảm 50% khối lượng render
+          X264_PRESET: "ultrafast"    # nhanh nhất; nếu muốn đẹp hơn dùng "veryfast" hoặc "faster"
+          FAST_AUDIO: "1"             # hậu kỳ nhẹ (chỉ loudnorm)
+
           TARGET_AUDIO_SEC: "7200"
           INIT_TARGET_CHARS: "5000"
           INIT_TARGET_SEC_HINT: "300"
@@ -109,15 +116,17 @@ jobs:
           IMG_H: "720"
           POLL_IMG_MODEL: "flux-anime"
           IMG_RATE_SEC: "1.5"
-          IMG_TIMEOUT_SEC: "20"
+          IMG_TIMEOUT_SEC: "15"
 
           YOUTUBE_PRIVACY: public
           PYTHONUNBUFFERED: "1"
 
-          OMP_NUM_THREADS: "1"
-          MKL_NUM_THREADS: "1"
-          OPENBLAS_NUM_THREADS: "1"
-          NUMEXPR_NUM_THREADS: "1"
+          # XTTS & threading
+          TORCH_NUM_THREADS: "2"
+          OMP_NUM_THREADS: "2"
+          MKL_NUM_THREADS: "2"
+          OPENBLAS_NUM_THREADS: "2"
+          NUMEXPR_NUM_THREADS: "2"
 
           # 👇 THÊM 2 DÒNG NÀY
           GENAI_MAX_RETRIES: "9"
