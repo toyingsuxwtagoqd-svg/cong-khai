@@ -116,7 +116,7 @@ jobs:
           TOP_P: "0.45"
           R_PEN: "8.0"
           L_PEN: "1.05"
-          CHUNK_MAX_CHARS: "200"
+          CHUNK_MAX_CHARS: "170"
           SENTENCE_PAUSE_MS: "0"
 
           IMG_W: "1280"
