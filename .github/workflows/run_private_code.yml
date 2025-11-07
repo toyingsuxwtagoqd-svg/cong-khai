@@ -102,12 +102,12 @@ jobs:
           FAST_AUDIO: "1"             # hậu kỳ nhẹ (chỉ loudnorm)
 
           TARGET_AUDIO_SEC: "3600"
-          INIT_TARGET_CHARS: "5000"
-          INIT_TARGET_SEC_HINT: "300"
+          INIT_TARGET_CHARS: "9000"
+          INIT_TARGET_SEC_HINT: "400"
 
           # Sáng tạo + chống lặp cho Gemini
-          GEN_TEMP: "1.1"                 # 1.0–1.1: sáng tạo/ổn định
-          GEN_TOP_P: "0.80"
+          GEN_TEMP: "0.90"                 # 1.0–1.1: sáng tạo/ổn định
+          GEN_TOP_P: "0.85"
           NOVEL_MIN_DETAILS: "10"           # mỗi chương 10 chi tiết mới
           NO_REPEAT_CONTEXT_CHARS: "3000"  # đọc lại 3000 ký tự gần nhất
           DO_NOT_REPEAT_MAX: "40"          # tối đa 40 câu cấm lặp
@@ -117,11 +117,11 @@ jobs:
           R_PEN: "8.0"
           L_PEN: "1.05"
           CHUNK_MAX_CHARS: "170"
-          SENTENCE_PAUSE_MS: "0"
+          SENTENCE_PAUSE_MS: "200"
 
           IMG_W: "1280"
           IMG_H: "720"
-          POLL_IMG_MODEL: "flux-anime"
+          POLL_IMG_MODEL: "flux"
           IMG_RATE_SEC: "1.5"
           IMG_TIMEOUT_SEC: "15"
 
