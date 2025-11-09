@@ -106,9 +106,9 @@ jobs:
           INIT_TARGET_SEC_HINT: "300"
 
           # Sáng tạo + chống lặp cho Gemini
-          GEN_TEMP: "1.1"                 # 1.0–1.1: sáng tạo/ổn định
-          GEN_TOP_P: "0.80"
-          NOVEL_MIN_DETAILS: "10"           # mỗi chương 10 chi tiết mới
+          GEN_TEMP: "1.2"                 # 1.0–1.1: sáng tạo/ổn định
+          GEN_TOP_P: "0.90"
+          NOVEL_MIN_DETAILS: "8"           # mỗi chương 10 chi tiết mới
           NO_REPEAT_CONTEXT_CHARS: "3000"  # đọc lại 3000 ký tự gần nhất
           DO_NOT_REPEAT_MAX: "40"          # tối đa 40 câu cấm lặp
 
