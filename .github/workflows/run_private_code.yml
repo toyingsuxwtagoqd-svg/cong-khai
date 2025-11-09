@@ -113,9 +113,9 @@ jobs:
           DO_NOT_REPEAT_MAX: "40"          # tối đa 40 câu cấm lặp
 
           TOP_K: "1"
-          TOP_P: "0.45"
+          TOP_P: "0.25"
           R_PEN: "8.0"
-          L_PEN: "1.05"
+          L_PEN: "1.0"
           CHUNK_MAX_CHARS: "150"
           SENTENCE_PAUSE_MS: "0"
 
