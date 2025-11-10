@@ -101,8 +101,8 @@ jobs:
           X264_PRESET: "ultrafast"    # nhanh nhất; nếu muốn đẹp hơn dùng "veryfast" hoặc "faster"
           FAST_AUDIO: "1"             # hậu kỳ nhẹ (chỉ loudnorm)
 
-          TARGET_AUDIO_SEC: "3600"
-          INIT_TARGET_CHARS: "5000"
+          TARGET_AUDIO_SEC: "600"
+          INIT_TARGET_CHARS: "3000"
           INIT_TARGET_SEC_HINT: "300"
 
           # Sáng tạo + chống lặp cho Gemini
