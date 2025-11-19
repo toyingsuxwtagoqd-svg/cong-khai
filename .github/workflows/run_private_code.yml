@@ -27,11 +27,10 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      # 2) Pre-sync: hợp nhất tieudedalay.csv vào mọi vị trí có thể được main.py dùng
+      # 2) Pre-sync tieudedalay.csv (giữ nguyên cho tương thích host, nhưng main mới không dùng tieude.csv nữa)
       - name: Pre-sync tieudedalay.csv (normalize locations)
         run: |
           set -e
-          # Các khả năng sẵn có:
           ROOT_WS=./tieudedalay.csv
           PRIV_ROOT=private-src/tieudedalay.csv
           PRIV_SRC=private-src/src/tieudedalay.csv
@@ -42,7 +41,6 @@ jobs:
           elif [ -f "$ROOT_WS"   ]; then pick_src="$ROOT_WS"
           fi
 
-          # Nếu có file ở bất kỳ nơi nào → trải đều cho 3 nơi
           if [ -n "$pick_src" ]; then
             echo "[INFO] Seed tieudedalay from: $pick_src"
             cp "$pick_src" "$ROOT_WS"    || true
@@ -84,8 +82,8 @@ jobs:
           pip install "TTS==0.22.0" "transformers==4.44.2" "huggingface_hub<0.34" pillow soundfile numpy requests tqdm underthesea vinorm google-genai youtube-transcript-api
           pip install "google-api-python-client" "google-auth" "google-auth-oauthlib"
 
-      # 6) Chạy main.py trong repo riêng tư — cần 4 secrets bắt buộc ở repo công khai
-      - name: Run main.py (video + thumb + append tieudedalay.csv)
+      # 6) Chạy main.py trong repo riêng tư
+      - name: Run main.py (YouTube link → rewrite → video + thumb)
         working-directory: private-src
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -94,17 +92,16 @@ jobs:
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
 
           # ----- tốc độ & chất lượng -----
-          # BẬT turbo nhanh nhất (soft-sub, không burn):
           FAST_MODE: "0"              # "1" = soft-sub, "0" = burn phụ đề
-          OUT_FPS: "15"               # 15fps đủ mượt cho slideshow, giảm 50% khối lượng render
-          X264_PRESET: "ultrafast"    # nhanh nhất; nếu muốn đẹp hơn dùng "veryfast" hoặc "faster"
+          OUT_FPS: "15"               # 15fps đủ mượt cho slideshow
+          X264_PRESET: "ultrafast"    # nhanh nhất
           FAST_AUDIO: "1"             # hậu kỳ nhẹ (chỉ loudnorm)
 
           TARGET_AUDIO_SEC: "600"
           INIT_TARGET_CHARS: "3000"
           INIT_TARGET_SEC_HINT: "300"
 
-          # Sáng tạo + chống lặp cho Gemini (ĐÃ GIẢM để bám sát video gốc hơn)
+          # Sáng tạo + bám transcript cho Gemini
           GEN_TEMP: "0.7"
           GEN_TOP_P: "0.80"
           NOVEL_MIN_DETAILS: "8"
@@ -148,7 +145,7 @@ jobs:
             python main.py
           fi
 
-      # 7) Post-sync: gom tieudedalay.csv từ nơi main.py có thể đã ghi → đưa về private-src root + src
+      # 7) Post-sync tieudedalay.csv (host vẫn có thể dùng nếu anh append ở đâu đó)
       - name: Post-sync tieudedalay.csv (collect & normalize)
         run: |
           set -e
@@ -156,14 +153,12 @@ jobs:
           PRIV_ROOT=private-src/tieudedalay.csv
           PRIV_SRC=private-src/src/tieudedalay.csv
 
-          # Ưu tiên file mới nhất nếu có nhiều bản
           newest=""
           for f in "$ROOT_WS" "$PRIV_SRC" "$PRIV_ROOT"; do
             if [ -f "$f" ]; then
               if [ -z "$newest" ]; then
                 newest="$f"
               else
-                # so sánh mtime
                 if [ "$f" -nt "$newest" ]; then newest="$f"; fi
               fi
             fi
@@ -178,8 +173,8 @@ jobs:
             echo "[INFO] No tieudedalay.csv produced."
           fi
 
-      # 8) Commit & push về repo riêng tư (nếu token có quyền ghi)
-      - name: Commit & push tieudedalay.csv back to PRIVATE
+      # 8) Commit & push state (tieudedalay + linkdalay + .state) về PRIVATE
+      - name: Commit & push dalay files back to PRIVATE
         working-directory: private-src
         env:
           TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
@@ -191,7 +186,6 @@ jobs:
             exit 0
           fi
 
-          # đảm bảo đang ở nhánh main và up-to-date
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${TOKEN}@github.com/${REPO}.git"
