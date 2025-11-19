@@ -75,14 +75,13 @@ jobs:
           echo "[INFO] Swap on:"
           swapon --show
 
-
       # 5) Python deps
       - name: Install Python deps
         working-directory: private-src
         run: |
           python -m pip install --upgrade pip
           pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.4.*" "torchaudio==2.4.*"
-          pip install "TTS==0.22.0" "transformers==4.44.2" "huggingface_hub<0.34" pillow soundfile numpy requests tqdm underthesea vinorm google-genai
+          pip install "TTS==0.22.0" "transformers==4.44.2" "huggingface_hub<0.34" pillow soundfile numpy requests tqdm underthesea vinorm google-genai youtube-transcript-api
           pip install "google-api-python-client" "google-auth" "google-auth-oauthlib"
 
       # 6) Chạy main.py trong repo riêng tư — cần 4 secrets bắt buộc ở repo công khai
@@ -105,12 +104,12 @@ jobs:
           INIT_TARGET_CHARS: "3000"
           INIT_TARGET_SEC_HINT: "300"
 
-          # Sáng tạo + chống lặp cho Gemini
-          GEN_TEMP: "1.2"                 # 1.0–1.1: sáng tạo/ổn định
-          GEN_TOP_P: "0.90"
-          NOVEL_MIN_DETAILS: "8"           # mỗi chương 10 chi tiết mới
-          NO_REPEAT_CONTEXT_CHARS: "3000"  # đọc lại 3000 ký tự gần nhất
-          DO_NOT_REPEAT_MAX: "40"          # tối đa 40 câu cấm lặp
+          # Sáng tạo + chống lặp cho Gemini (ĐÃ GIẢM để bám sát video gốc hơn)
+          GEN_TEMP: "0.7"
+          GEN_TOP_P: "0.80"
+          NOVEL_MIN_DETAILS: "8"
+          NO_REPEAT_CONTEXT_CHARS: "3000"
+          DO_NOT_REPEAT_MAX: "40"
 
           TOP_K: "1"
           TOP_P: "0.25"
@@ -135,7 +134,7 @@ jobs:
           OPENBLAS_NUM_THREADS: "2"
           NUMEXPR_NUM_THREADS: "2"
 
-          # 👇 THÊM 2 DÒNG NÀY
+          # Retry cho Gemini
           GENAI_MAX_RETRIES: "9"
           GENAI_BACKOFF_BASE: "2.0"
         
@@ -200,8 +199,8 @@ jobs:
           git checkout -B main || true
           git pull --rebase origin main || true
 
-          # add cả 2 vị trí khả dĩ
-          git add tieudedalay.csv src/tieudedalay.csv .state/* 2>/dev/null || true
+          # add cả 2 vị trí tieudedalay + linkdalay + state
+          git add tieudedalay.csv src/tieudedalay.csv linkdalay.csv src/linkdalay.csv .state/* 2>/dev/null || true
           git diff --cached --quiet && { echo "[INFO] No changes to commit."; exit 0; }
-          git commit -m "ci(state): update tieudedalay.csv"
+          git commit -m "ci(state): update dalay files"
           git push origin HEAD:main
