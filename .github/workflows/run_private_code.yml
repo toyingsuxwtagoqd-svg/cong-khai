@@ -97,7 +97,7 @@ jobs:
           X264_PRESET: "ultrafast"    # nhanh nhất
           FAST_AUDIO: "1"             # hậu kỳ nhẹ (chỉ loudnorm)
 
-          TARGET_AUDIO_SEC: "600"
+          TARGET_AUDIO_SEC: "5000"
           INIT_TARGET_CHARS: "3000"
           INIT_TARGET_SEC_HINT: "300"
 
